@@ -29,7 +29,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <iterator>
 
 #include "hudmsg.h"
 #include "inferno.h"
@@ -3622,7 +3621,7 @@ void hud_show_tas(grs_canvas &canvas, object_array &Objects, unsigned current_y,
 	gr_set_fontcolor(canvas, BM_XRGB(0, 31, 0), -1);
 	//I am assuming the player will be near the very start of the array before robots
 	const vms_vector *player_pos = nullptr;
-	auto robots_y = current_y - line_spacing;
+	auto robots_y = current_y;
 	u_int32_t robot_count = 0;
 	const object* ctrlctr = nullptr;
 	const object* thief = nullptr;
@@ -3683,16 +3682,16 @@ void hud_show_tas(grs_canvas &canvas, object_array &Objects, unsigned current_y,
 	}
 
 	std::sort(robots.begin(), robots.end(), sortrobots);
-	auto x1 = canvas.cv_bitmap.bm_w - (FSPACX(220));
+	auto x1 = canvas.cv_bitmap.bm_w - (FSPACX(225));
 	for(const auto &robot : robots) {
 		auto bot = std::get<1>(robot);
-		gr_printf(canvas, game_font, x1, robots_y, "ID:%3d Seg:%3d P: (%3d, %3d, %3d) D: (%3d) S: (%3d)", bot.id, bot.segnum, 
+		gr_printf(canvas, game_font, x1, robots_y, "ID:%3d Seg:%3d P: (%4d, %4d, %4d) D: (%3d) S: (%3d)", bot.id, bot.segnum, 
 			f2ir(bot.pos.x), f2ir(bot.pos.y), f2ir(bot.pos.z), f2ir(std::get<0>(robot)), f2ir(bot.shields));
 		robots_y -= line_spacing;
 	}
 	gr_printf(canvas, game_font, x1, robots_y, "Robots: %3d", robot_count);
 	robots_y = 1 + (line_spacing * 2);
-	x1 = canvas.cv_bitmap.bm_w - (FSPACX(180));
+	x1 = canvas.cv_bitmap.bm_w - (FSPACX(190));
 	if(ctrlctr != nullptr) {
 		distance = vector_distance(*player_pos, ctrlctr->pos);
 		gr_printf(canvas, game_font, x1, robots_y, "Reactor: D: (%3d) S: (%3d)", f2ir(distance), f2ir(ctrlctr->shields));
@@ -3700,7 +3699,7 @@ void hud_show_tas(grs_canvas &canvas, object_array &Objects, unsigned current_y,
 	}
 	if(thief != nullptr) {
 		distance = vector_distance(*player_pos, thief->pos);
-		gr_printf(canvas, game_font, x1, robots_y, "Thief: P: (%3d, %3d, %3d) D: (%3d) S: (%3d)", f2ir(thief->pos.x), f2ir(thief->pos.y), f2ir(thief->pos.z), f2ir(distance), f2ir(thief->shields));
+		gr_printf(canvas, game_font, x1, robots_y, "Thief: P: (%4d, %4d, %4d) D: (%3d) S: (%3d)", f2ir(thief->pos.x), f2ir(thief->pos.y), f2ir(thief->pos.z), f2ir(distance), f2ir(thief->shields));
 	}
 }
 

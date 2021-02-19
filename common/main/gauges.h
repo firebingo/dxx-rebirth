@@ -66,6 +66,7 @@ void add_points_to_score(player_info &, int points);
 void add_bonus_points_to_score(player_info &, int points);
 void render_gauges(void);
 void init_gauges(void);
+void hud_show_tas(grs_canvas &canvas, object_array &Objects, unsigned current_y, const grs_font &game_font, const float line_spacing);
 void draw_hud(grs_canvas &, const object &, const control_info &Controls);     // draw all the HUD stuff
 }
 #endif

@@ -29,6 +29,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <iterator>
 
 #include "hudmsg.h"
 #include "inferno.h"
@@ -3606,6 +3607,103 @@ void show_HUD_names(grs_canvas &canvas)
 	}
 }
 
+static inline fix vector_distance(const vms_vector &x, const vms_vector &y) {
+	return sqrt(pow(y.x - x.x, 2) + pow(y.y - x.y, 2) + pow(y.z - x.z, 2));
+}
+
+static inline bool sortrobots(const std::tuple<fix, object_base>& a,  
+               const std::tuple<fix, object_base>& b) 
+{ 
+    return (std::get<0>(a) < std::get<0>(b)); 
+} 
+
+void hud_show_tas(grs_canvas &canvas, object_array &Objects, unsigned current_y, const grs_font &game_font, const float line_spacing) {
+	auto &vcobjptridx = Objects.vcptridx;
+	gr_set_fontcolor(canvas, BM_XRGB(0, 31, 0), -1);
+	//I am assuming the player will be near the very start of the array before robots
+	const vms_vector *player_pos = nullptr;
+	auto robots_y = current_y - line_spacing;
+	u_int32_t robot_count = 0;
+	const object* ctrlctr = nullptr;
+	const object* thief = nullptr;
+	auto robots = std::vector<std::tuple<fix, object_base>>();
+	fix distance = 0;
+	for (const auto &&curobjp : vcobjptridx)
+	{
+		if (curobjp->type == OBJ_PLAYER)
+		{
+			player_pos = &curobjp->pos;
+			auto loop_y = current_y;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: (%i, %i, %i)", "Pos", f2ir(curobjp->pos.x), f2ir(curobjp->pos.y), f2ir(curobjp->pos.z));	
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: (%i, %i, %i)", "Thrust", f2ir(curobjp->mtype.phys_info.thrust.x), f2ir(curobjp->mtype.phys_info.thrust.y), f2ir(curobjp->mtype.phys_info.thrust.z));
+			loop_y -= line_spacing;
+			auto m = vm_vector_2_matrix(curobjp->orient.fvec, &curobjp->orient.uvec, &curobjp->orient.rvec);
+			auto angles = vm_extract_angles_matrix(m);
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: (%i, %i, %i)", "Rot", angles.p, angles.b, angles.h);
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: (%i, %i, %i)", "Velocity", f2ir(curobjp->mtype.phys_info.velocity.x), f2ir(curobjp->mtype.phys_info.velocity.y), f2ir(curobjp->mtype.phys_info.velocity.z));
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: %li", "PrimTime", curobjp->ctype.player_info.Next_laser_fire_time);
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: %li", "SecoTime", curobjp->ctype.player_info.Next_missile_fire_time);
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: %li", "FlarTime", curobjp->ctype.player_info.Next_flare_fire_time);
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: %li", "GameTime", GameTime64);
+			loop_y -= line_spacing;
+		}
+		
+		//33 is d2 guide, 42 is d2 thief
+#if defined(DXX_BUILD_DESCENT_II)
+		if(curobjp->type == OBJ_ROBOT && player_pos != nullptr && curobjp->id != 33) {
+			if(curobjp->id == 42) {
+				thief = curobjp;
+			} else {
+				robot_count++;
+				distance = vector_distance(*player_pos, curobjp->pos);
+				if(f2ir(distance) < 130) {
+					robots.push_back({distance, curobjp});
+				}
+			}
+		}
+#elif
+		if(curobjp->type == OBJ_ROBOT && player_pos != nullptr) {
+			robot_count++;
+			distance = vector_distance(*player_pos, curobjp->pos);
+			if(f2ir(distance) < 130) {
+				robots.push_back({distance, curobjp});
+			}
+		}
+#endif
+
+		if(curobjp->type == OBJ_CNTRLCEN) {
+			ctrlctr = curobjp;
+		}
+	}
+
+	std::sort(robots.begin(), robots.end(), sortrobots);
+	auto x1 = canvas.cv_bitmap.bm_w - (FSPACX(220));
+	for(const auto &robot : robots) {
+		auto bot = std::get<1>(robot);
+		gr_printf(canvas, game_font, x1, robots_y, "ID:%3d Seg:%3d P: (%3d, %3d, %3d) D: (%3d) S: (%3d)", bot.id, bot.segnum, 
+			f2ir(bot.pos.x), f2ir(bot.pos.y), f2ir(bot.pos.z), f2ir(std::get<0>(robot)), f2ir(bot.shields));
+		robots_y -= line_spacing;
+	}
+	gr_printf(canvas, game_font, x1, robots_y, "Robots: %3d", robot_count);
+	robots_y = 1 + (line_spacing * 2);
+	x1 = canvas.cv_bitmap.bm_w - (FSPACX(180));
+	if(ctrlctr != nullptr) {
+		distance = vector_distance(*player_pos, ctrlctr->pos);
+		gr_printf(canvas, game_font, x1, robots_y, "Reactor: D: (%3d) S: (%3d)", f2ir(distance), f2ir(ctrlctr->shields));
+		robots_y += line_spacing;
+	}
+	if(thief != nullptr) {
+		distance = vector_distance(*player_pos, thief->pos);
+		gr_printf(canvas, game_font, x1, robots_y, "Thief: P: (%3d, %3d, %3d) D: (%3d) S: (%3d)", f2ir(thief->pos.x), f2ir(thief->pos.y), f2ir(thief->pos.z), f2ir(distance), f2ir(thief->shields));
+	}
+}
+
 //draw all the things on the HUD
 void draw_hud(grs_canvas &canvas, const object &plrobj, const control_info &Controls)
 {
@@ -3680,7 +3778,6 @@ void draw_hud(grs_canvas &canvas, const object &plrobj, const control_info &Cont
 		const local_multires_gauge_graphic multires_gauge_graphic = {};
 		const hud_draw_context_hs_mr hudctx(canvas, grd_curscreen->get_screen_width(), grd_curscreen->get_screen_height(), multires_gauge_graphic);
 		if (PlayerCfg.CockpitMode[1]==CM_FULL_SCREEN) {
-
 			auto &game_font = *GAME_FONT;
 			const auto &&line_spacing = LINE_SPACING(game_font, game_font);
 			const unsigned base_y = canvas.cv_bitmap.bm_h - ((Game_mode & GM_MULTI) ? (line_spacing * (5 + (N_players > 3))) : line_spacing);
@@ -3738,6 +3835,15 @@ void draw_hud(grs_canvas &canvas, const object &plrobj, const control_info &Cont
 		gr_set_fontcolor(canvas, BM_XRGB(0, 31, 0), -1);
 		auto &game_font = *GAME_FONT;
 		gr_string(canvas, game_font, 0x8000, canvas.cv_bitmap.bm_h - LINE_SPACING(game_font, game_font), TXT_REAR_VIEW);
+	}
+
+	if(PlayerCfg.CockpitMode[1]==CM_FULL_SCREEN) {
+		auto &game_font = *GAME_FONT;
+		const auto &&line_spacing = LINE_SPACING(game_font, game_font);
+		const unsigned base_y = canvas.cv_bitmap.bm_h - ((Game_mode & GM_MULTI) ? (line_spacing * (5 + (N_players > 3))) : line_spacing);
+		unsigned current_y = base_y;
+		current_y -= line_spacing * 5;
+		hud_show_tas(canvas, Objects, current_y, game_font, line_spacing);
 	}
 }
 

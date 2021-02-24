@@ -3610,6 +3610,13 @@ static inline fix vector_distance(const vms_vector &x, const vms_vector &y) {
 	return sqrt(pow(y.x - x.x, 2) + pow(y.y - x.y, 2) + pow(y.z - x.z, 2));
 }
 
+static inline fix vector_len(const vms_vector &vec) {
+	int x = f2ir(vec.x);
+	int y = f2ir(vec.y);
+	int z = f2ir(vec.z);
+	return sqrt((x*x) + (y*y) + (z*z));
+}
+
 static inline bool sortrobots(const std::tuple<fix, object_base>& a,  
                const std::tuple<fix, object_base>& b) 
 { 
@@ -3642,6 +3649,8 @@ void hud_show_tas(grs_canvas &canvas, object_array &Objects, unsigned current_y,
 			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: (%i, %i, %i)", "Rot", angles.p, angles.b, angles.h);
 			loop_y -= line_spacing;
 			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: (%i, %i, %i)", "Velocity", f2ir(curobjp->mtype.phys_info.velocity.x), f2ir(curobjp->mtype.phys_info.velocity.y), f2ir(curobjp->mtype.phys_info.velocity.z));
+			loop_y -= line_spacing;
+			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: %i", "Velocity", vector_len(curobjp->mtype.phys_info.velocity));
 			loop_y -= line_spacing;
 			gr_printf(canvas, game_font, FSPACX(1), loop_y, "%s: %li", "PrimTime", curobjp->ctype.player_info.Next_laser_fire_time);
 			loop_y -= line_spacing;

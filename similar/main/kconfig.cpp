@@ -42,36 +42,20 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "physfsx.h"
 #include "game.h"
 #include "gamefont.h"
-#include "iff.h"
 #include "u_mem.h"
 #include "kconfig.h"
-#include "gauges.h"
-#include "rbaudio.h"
-#include "render.h"
 #include "digi.h"
 #include "key.h"
 #include "mouse.h"
 #include "newmenu.h"
-#include "endlevel.h"
 #include "multi.h"
 #include "timer.h"
 #include "text.h"
 #include "player.h"
-#include "menu.h"
-#include "automap.h"
 #include "args.h"
-#include "lighting.h"
-#include "ai.h"
-#include "cntrlcen.h"
-#include "collide.h"
 #include "playsave.h"
 #include "screens.h"
 
-#if DXX_USE_OGL
-#include "ogl_init.h"
-#endif
-
-#include "compiler-range_for.h"
 #include "d_array.h"
 #include "d_range.h"
 #include "d_zip.h"
@@ -386,7 +370,7 @@ static void kconfig_draw(kc_menu &menu)
 	grs_canvas &save_canvas = *grd_curcanv;
 	const auto &&fspacx = FSPACX();
 	const auto &&fspacy = FSPACY();
-	int w = fspacx(290), h = fspacy(170);
+	int w = menu.w_canv.cv_bitmap.bm_w, h = menu.w_canv.cv_bitmap.bm_h;
 
 	gr_set_default_canvas();
 	nm_draw_background(*grd_curcanv, ((SWIDTH - w) / 2) - BORDERX, ((SHEIGHT - h) / 2) - BORDERY, ((SWIDTH - w) / 2) + w + BORDERX, ((SHEIGHT - h) / 2) + h + BORDERY);
@@ -830,9 +814,13 @@ static void kconfig_sub(const char *litems, const kc_item * items,kc_mitem *mite
 
 	const auto &&fspacx = FSPACX();
 	const auto &&fspacy = FSPACY();
-	const auto &&window_width = fspacx(320);
-	const auto &&window_height = fspacy(220);
-	auto menu = window_create<kc_menu>(grd_curscreen->sc_canvas, (SWIDTH - window_width) / 2, (SHEIGHT - window_height) / 2, window_width, window_height);
+	const uint16_t target_window_width = fspacx(320);
+	const uint16_t target_window_height = fspacy(220);
+	const auto swidth = SWIDTH;
+	const auto sheight = SHEIGHT;
+	const auto window_width = std::min(swidth, target_window_width);
+	const auto window_height = std::min(sheight, target_window_height);
+	auto menu = window_create<kc_menu>(grd_curscreen->sc_canvas, (swidth - window_width) / 2, (sheight - window_height) / 2, window_width, window_height);
 	menu->items = items;
 	menu->litems = litems;
 	menu->mitems = mitems;

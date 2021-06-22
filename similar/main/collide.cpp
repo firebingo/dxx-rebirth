@@ -37,14 +37,11 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "bm.h"
 #include "3d.h"
 #include "segment.h"
-#include "texmap.h"
 #include "laser.h"
 #include "key.h"
 #include "gameseg.h"
 #include "object.h"
 #include "physics.h"
-#include "slew.h"
-#include "render.h"
 #include "wall.h"
 #include "vclip.h"
 #include "polyobj.h"
@@ -54,14 +51,12 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "dxxerror.h"
 #include "ai.h"
 #include "hostage.h"
-#include "fuelcen.h"
 #include "sounds.h"
 #include "robot.h"
 #include "weapon.h"
 #include "player.h"
 #include "gauges.h"
 #include "powerup.h"
-#include "newmenu.h"
 #include "scores.h"
 #include "effects.h"
 #include "textures.h"
@@ -77,9 +72,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "switch.h"
 #include "palette.h"
 #include "gameseq.h"
-#if DXX_USE_EDITOR
-#include "editor/editor.h"
-#endif
 #include "collide.h"
 #include "escort.h"
 
@@ -788,24 +780,21 @@ static window_event_result collide_weapon_and_wall(
 		multi_digi_link_sound_to_pos(SOUND_FORCEFIELD_BOUNCE_WEAPON, hitseg, 0, hitpt, 0, f1_0);
 		return window_event_result::ignored;	//bail here. physics code will bounce this object
 	}
+#endif
 
 	#ifndef NDEBUG
 	if (keyd_pressed[KEY_LAPOSTRO])
 		if (weapon->ctype.laser_info.parent_num == get_local_player().objnum) {
 			//	MK: Real pain when you need to know a seg:side and you've got quad lasers.
 			HUD_init_message(HM_DEFAULT, "Hit at segment = %hu, side = %i", static_cast<vmsegptridx_t::integral_type>(hitseg), hitwall);
+#if defined(DXX_BUILD_DESCENT_II)
 			if (get_weapon_id(weapon) < 4)
 				subtract_light(LevelSharedDestructibleLightState, hitseg, hitwall);
 			else if (get_weapon_id(weapon) == weapon_id_type::FLARE_ID)
 				add_light(LevelSharedDestructibleLightState, hitseg, hitwall);
-		}
-
-		//@@#ifdef EDITOR
-		//@@Cursegp = &Segments[hitseg];
-		//@@Curside = hitwall;
-		//@@#endif
-	#endif
 #endif
+		}
+	#endif
 
 	if ((weapon->mtype.phys_info.velocity.x == 0) && (weapon->mtype.phys_info.velocity.y == 0) && (weapon->mtype.phys_info.velocity.z == 0)) {
 		Int3();	//	Contact Matt: This is impossible.  A weapon with 0 velocity hit a wall, which doesn't move.

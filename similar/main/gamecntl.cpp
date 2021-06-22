@@ -38,11 +38,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "key.h"
 #include "object.h"
 #include "menu.h"
-#include "physics.h"
 #include "dxxerror.h"
 #include "joy.h"
-#include "iff.h"
-#include "pcx.h"
 #include "timer.h"
 #include "render.h"
 #include "laser.h"
@@ -52,7 +49,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gauges.h"
 #include "texmap.h"
 #include "3d.h"
-#include "effects.h"
 #include "gameseg.h"
 #include "wall.h"
 #include "ai.h"
@@ -78,19 +74,15 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "config.h"
 #include "hudmsg.h"
 #include "kconfig.h"
-#include "mouse.h"
 #include "titles.h"
 #include "gr.h"
 #include "playsave.h"
-#include "scores.h"
 
 #include "multi.h"
 #include "cntrlcen.h"
 #include "fuelcen.h"
-#include "pcx.h"
 #include "state.h"
 #include "piggy.h"
-#include "multibot.h"
 #include "ai.h"
 #include "rbaudio.h"
 #include "switch.h"
@@ -151,7 +143,7 @@ struct pause_window : ::dcx::pause_window
 };
 
 #ifndef RELEASE
-static void do_cheat_menu();
+static void do_cheat_menu(object &plrobj, grs_canvas &cv_canvas);
 static void play_test_sound();
 #endif
 
@@ -406,6 +398,55 @@ static void format_time(char (&str)[9], unsigned secs_int, unsigned hours_extra)
 	const unsigned h = d2.quot + hours_extra;
 	snprintf(str, sizeof(str), "%1u:%02u:%02u", h, m, s);
 }
+
+#ifndef RELEASE
+#if DXX_USE_EDITOR
+struct choose_curseg_menu_items
+{
+	std::array<char, 40> caption;
+	std::array<char, sizeof("65535")> text;
+	std::array<newmenu_item, 2> m;
+	choose_curseg_menu_items(const d_level_shared_segment_state &LevelSharedSegmentState) :
+		m{{
+			nm_item_text((snprintf(caption.data(), caption.size(), "Enter target segment number (max=%hu)", LevelSharedSegmentState.get_segments().get_count()), caption.data())),
+			nm_item_input((text.front() = 0, text)),
+		}}
+	{
+	}
+};
+
+struct choose_curseg_menu : choose_curseg_menu_items, passive_newmenu
+{
+	choose_curseg_menu(const d_level_shared_segment_state &LevelSharedSegmentState, grs_canvas &src) :
+		choose_curseg_menu_items(LevelSharedSegmentState),
+		passive_newmenu(menu_title{nullptr}, menu_subtitle{nullptr}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+		{
+		}
+	virtual window_event_result event_handler(const d_event &) override;
+};
+
+window_event_result choose_curseg_menu::event_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			{
+				char *p;
+				const auto s = strtoul(text.data(), &p, 0);
+				if (*p)
+					break;
+				if (s >= Segments.get_count())
+					break;
+				Cursegp = Segments.vmptridx(static_cast<segnum_t>(s));
+				break;
+			}
+		default:
+			break;
+	}
+	return newmenu::event_handler(event);
+}
+#endif
+#endif
 
 }
 
@@ -920,6 +961,37 @@ static window_event_result HandleSystemKey(int key)
 			break;
 #endif
 
+#if DXX_USE_OGL
+		case KEY_SHIFTED + KEY_F5:
+			VR_eye_offset -= 1;
+			reset_cockpit();
+			break;
+		case KEY_SHIFTED + KEY_F6:
+			VR_eye_offset += 1;
+			reset_cockpit();
+			break;
+		case KEY_SHIFTED + KEY_ALTED + KEY_F5:
+			VR_eye_width -= (F1_0/10); //*= 10/11;
+			reset_cockpit();
+			break;
+		case KEY_SHIFTED + KEY_ALTED + KEY_F6:
+			VR_eye_width += (F1_0/10); //*= 11/10;
+			reset_cockpit();
+			break;
+		case KEY_SHIFTED + KEY_F7:
+		case KEY_SHIFTED + KEY_ALTED + KEY_F7:
+			VR_eye_width = F1_0;
+			VR_eye_offset = 0;
+			reset_cockpit();
+			break;
+		case KEY_SHIFTED + KEY_F8:
+		case KEY_SHIFTED + KEY_ALTED + KEY_F8:
+			++VR_stereo %= STEREO_MAX_FORMAT;
+			init_stereo();
+			reset_cockpit();
+			break;
+#endif
+
 			/*
 			 * Jukebox hotkeys -- MD2211, 2007
 			 * Now for all music
@@ -1361,6 +1433,9 @@ static window_event_result HandleTestKey(fvmsegptridx &vmsegptridx, int key, con
 			break;
 		}
 #endif
+		case KEY_C + KEY_CTRLED + KEY_DEBUGGED:
+			window_create<choose_curseg_menu>(LevelSharedSegmentState, *grd_curcanv);
+			break;
 		case KEY_C + KEY_SHIFTED + KEY_DEBUGGED:
 			if (Player_dead_state == player_dead_state::no &&
 				!(Game_mode & GM_MULTI))
@@ -1400,13 +1475,20 @@ static window_event_result HandleTestKey(fvmsegptridx &vmsegptridx, int key, con
 #endif
 
 		case KEY_DEBUGGED + KEY_C:
-			do_cheat_menu();
+		{
+			auto &plrobj = get_local_plrobj();
+			do_cheat_menu(plrobj, grd_curscreen->sc_canvas);
 			break;
+		}
 		case KEY_DEBUGGED + KEY_SHIFTED + KEY_A:
-			do_megawow_powerup(10);
+		{
+			auto &plrobj = get_local_plrobj();
+			do_megawow_powerup(plrobj, 10);
 			break;
+		}
 		case KEY_DEBUGGED + KEY_A:	{
-			do_megawow_powerup(200);
+			auto &plrobj = get_local_plrobj();
+			do_megawow_powerup(plrobj, 200);
 				break;
 		}
 
@@ -1783,7 +1865,7 @@ static window_event_result FinalCheats()
 		HUD_init_message(HM_DEFAULT, "Rapid fire %s!", cheats.rapidfire?TXT_ON:TXT_OFF);
 #if defined(DXX_BUILD_DESCENT_I)
                 if (cheats.rapidfire)
-                        do_megawow_powerup(200);
+					do_megawow_powerup(plrobj, 200);
 #endif
 	}
 
@@ -2001,12 +2083,9 @@ int wimp_menu::subfunction_handler(const d_event &event)
 	return 0;
 }
 
-static void do_cheat_menu()
+static void do_cheat_menu(object &plrobj, grs_canvas &cv_canvas)
 {
-	auto &Objects = LevelUniqueObjectState.Objects;
-	auto &vmobjptr = Objects.vmptr;
-	auto &plrobj = get_local_plrobj();
-	auto menu = window_create<wimp_menu>(plrobj, grd_curscreen->sc_canvas);
+	auto menu = window_create<wimp_menu>(plrobj, cv_canvas);
 	(void)menu;
 }
 #endif

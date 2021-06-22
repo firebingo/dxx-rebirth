@@ -29,7 +29,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <stdio.h>
 #include "u_mem.h"
 #include "gr.h"
-#include "grdef.h"
 #include "dxxerror.h"
 #if DXX_USE_OGL
 #include "ogl_init.h"
@@ -65,7 +64,7 @@ grs_bitmap_ptr gr_create_bitmap_raw(const uint16_t w, const uint16_t h, RAIIdmem
 }
 
 // TODO: virtualize
-void gr_init_bitmap(grs_bitmap &bm, const bm_mode mode, const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h, const uint16_t bytesperline, const uint8_t *const data) noexcept
+void gr_init_bitmap(grs_bitmap &bm, const bm_mode mode, const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h, const uint16_t bytesperline, color_palette_index *const mdata) noexcept
 {
 	bm.bm_x = x;
 	bm.bm_y = y;
@@ -75,7 +74,7 @@ void gr_init_bitmap(grs_bitmap &bm, const bm_mode mode, const uint16_t x, const 
 	bm.set_type(mode);
 	bm.bm_rowsize = bytesperline;
 
-	bm.bm_data = data;
+	bm.bm_mdata = mdata;
 #if DXX_USE_OGL
 	bm.bm_parent = nullptr;
 	bm.gltexture = nullptr;
@@ -124,6 +123,9 @@ void gr_init_sub_bitmap (grs_bitmap &bm, grs_bitmap &bmParent, uint16_t x, uint1
 	if (subx != (bm.bm_x = static_cast<uint16_t>(subx)) ||
 		suby != (bm.bm_y = static_cast<uint16_t>(suby)))
 		throw std::overflow_error("offset overflow");
+	if (x > bmParent.bm_w ||
+		y > bmParent.bm_h)
+		throw std::overflow_error("offset beyond parent dimensions");
 	bm.bm_w = w;
 	bm.bm_h = h;
 	bm.set_flags(bmParent.get_flags());

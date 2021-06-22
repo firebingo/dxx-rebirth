@@ -39,23 +39,16 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "render.h"
 #include "game.h"
 #include "object.h"
-#include "laser.h"
 #include "textures.h"
-#include "screens.h"
 #include "segpoint.h"
 #include "wall.h"
 #include "texmerge.h"
-#include "physics.h"
 #include "3d.h"
 #include "gameseg.h"
 #include "vclip.h"
 #include "lighting.h"
-#include "cntrlcen.h"
 #include "newdemo.h"
-#include "automap.h"
 #include "endlevel.h"
-#include "key.h"
-#include "newmenu.h"
 #include "u_mem.h"
 #include "piggy.h"
 #include "timer.h"
@@ -1221,6 +1214,12 @@ void render_frame(grs_canvas &canvas, fix eye_offset, window_rendered_data &wind
 	start_lighting_frame(*Viewer);		//this is for ugly light-smoothing hack
   
 	g3_start_frame(canvas);
+
+#if DXX_USE_OGL
+	// select stereo viewport/transform/buffer per left/right eye
+	if (VR_stereo)
+		ogl_stereo_frame(eye_offset, VR_eye_offset);
+#endif
 
 	auto Viewer_eye = Viewer->pos;
 

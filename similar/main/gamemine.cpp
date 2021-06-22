@@ -41,15 +41,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "physfsx.h"
 #include "switch.h"
 #include "game.h"
-#include "newmenu.h"
-#if DXX_USE_EDITOR
-#include "editor/editor.h"
-#include "editor/esegment.h"
-#include "d_range.h"
-#endif
 #include "fuelcen.h"
 #include "hash.h"
-#include "key.h"
 #include "piggy.h"
 #include "gamesave.h"
 #include "compiler-poison.h"
@@ -299,6 +292,7 @@ uint16_t convert_d1_tmap_num(const uint16_t d1_tmap_num)
 	case 368: return 395;
 	case 369: return 396;
 	case 370:  return  d1_pig_present ? 195 : 392; // mntr04d (devil: -1)
+	case 570: return 635;
 	// range 371..584 handled by default case (wall01 and door frames)
 	default:
 		// ranges:

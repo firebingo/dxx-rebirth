@@ -47,19 +47,15 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "key.h"
 #include "config.h"
 #include "object.h"
-#include "physics.h"
 #include "dxxerror.h"
 #include "joy.h"
-#include "iff.h"
 #include "pcx.h"
 #include "timer.h"
 #include "render.h"
 #include "laser.h"
 #include "screens.h"
 #include "textures.h"
-#include "slew.h"
 #include "gauges.h"
-#include "texmap.h"
 #include "3d.h"
 #include "effects.h"
 #include "menu.h"
@@ -91,15 +87,12 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "switch.h"
 #include "controls.h"
 #include "songs.h"
-#include "rbaudio.h"
 
 #include "multi.h"
 #include "cntrlcen.h"
 #include "pcx.h"
 #include "state.h"
 #include "piggy.h"
-#include "multibot.h"
-#include "fvi.h"
 #include "ai.h"
 #include "robot.h"
 #include "playsave.h"
@@ -193,9 +186,46 @@ constexpr screen_mode initial_small_game_screen_mode{320, 200};
 constexpr screen_mode initial_large_game_screen_mode{1024, 768};
 screen_mode Game_screen_mode = initial_large_game_screen_mode;
 
+int  VR_stereo = false;
+fix  VR_eye_width = F1_0;
+int  VR_eye_offset = 0;
+int  VR_sync_width = 20;
+grs_canvas VR_hud_left;
+grs_canvas VR_hud_right;
 }
 
 namespace dsx {
+
+void init_stereo()
+{
+#if DXX_USE_OGL
+	// init stereo options
+	if (CGameArg.OglStereo || CGameArg.OglStereoView) {
+		if (!VR_stereo && !VR_eye_offset)
+			VR_stereo = (CGameArg.OglStereoView) ? CGameArg.OglStereoView % STEREO_MAX_FORMAT : STEREO_ABOVE_BELOW;
+		constexpr int half_width_eye_offset = -6;
+		constexpr int full_width_eye_offset = -12;
+		switch (VR_stereo)
+		{
+			case STEREO_NONE:
+			case STEREO_ABOVE_BELOW:
+			case STEREO_ABOVE_BELOW_SYNC:
+				VR_eye_offset = full_width_eye_offset;
+				break;
+			case STEREO_SIDE_BY_SIDE:
+			case STEREO_SIDE_BY_SIDE2:
+				VR_eye_offset = half_width_eye_offset;
+				break;
+		}
+		VR_eye_width = (F1_0 * 7) / 10;	// Descent 1.5 defaults
+		VR_sync_width = (20 * SHEIGHT) / 480;
+		PlayerCfg.CockpitMode[1] = CM_FULL_SCREEN;
+	}
+	else {
+		VR_stereo = false;
+	}
+#endif
+}
 
 //initialize the various canvases on the game screen
 //called every time the screen mode or cockpit changes
@@ -245,7 +275,34 @@ void init_cockpit()
 		}
 
 		case CM_FULL_SCREEN:
-			game_init_render_sub_buffers(0, 0, SWIDTH, SHEIGHT);
+			{
+				unsigned w = SWIDTH;
+				unsigned h = SHEIGHT;
+				switch (VR_stereo)
+				{
+					case STEREO_NONE:
+						/* Preserve width */
+						/* Preserve height */
+						break;
+					case STEREO_ABOVE_BELOW:
+					case STEREO_ABOVE_BELOW_SYNC:
+						/* Preserve width */
+						/* Change height */
+						h /= 2;
+						break;
+					case STEREO_SIDE_BY_SIDE2:
+						/* Change width */
+						/* Change height */
+						h /= 2;
+						DXX_BOOST_FALLTHROUGH;
+					case STEREO_SIDE_BY_SIDE:
+						/* Change width */
+						/* Preserve height */
+						w /= 2;
+						break;
+				}
+				game_init_render_sub_buffers(0, 0, w, h);
+			}
 			break;
 
 		case CM_STATUS_BAR:
@@ -277,6 +334,10 @@ void init_cockpit()
 //selects a given cockpit (or lack of one).  See types in game.h
 void select_cockpit(cockpit_mode_t mode)
 {
+	// skip switching cockpit views while stereo viewport active
+	if (VR_stereo && mode != CM_FULL_SCREEN)
+		return;
+
 	if (mode != PlayerCfg.CockpitMode[1]) {		//new mode
 		PlayerCfg.CockpitMode[1]=mode;
 		init_cockpit();
@@ -296,6 +357,34 @@ void game_init_render_sub_buffers( int x, int y, int w, int h )
 {
 	gr_clear_canvas(*grd_curcanv, 0);
 	gr_init_sub_canvas(Screen_3d_window, grd_curscreen->sc_canvas, x, y, w, h);
+
+	if (VR_stereo) {
+		// offset HUD screen rects to force out-of-screen parallax on HUD overlays
+		int dx = (VR_eye_offset < 0) ? -VR_eye_offset : 0;
+		int dy = VR_sync_width / 2;
+		switch (VR_stereo) {
+		case STEREO_NONE:
+			gr_init_sub_canvas(VR_hud_left,  grd_curscreen->sc_canvas, x+dx, y, w-dx, h);
+			gr_init_sub_canvas(VR_hud_right, grd_curscreen->sc_canvas, x, y, w-dx, h);
+			break;
+		case STEREO_ABOVE_BELOW:
+			gr_init_sub_canvas(VR_hud_left,  grd_curscreen->sc_canvas, x+dx, y, w-dx, h);
+			gr_init_sub_canvas(VR_hud_right, grd_curscreen->sc_canvas, x, y+h, w-dx, h);
+			break;
+		case STEREO_ABOVE_BELOW_SYNC:
+			gr_init_sub_canvas(VR_hud_left,  grd_curscreen->sc_canvas, x+dx, y, w-dx, h-dy);
+			gr_init_sub_canvas(VR_hud_right, grd_curscreen->sc_canvas, x, y+h+dy, w-dx, h-dy);
+			break;
+		case STEREO_SIDE_BY_SIDE:
+			gr_init_sub_canvas(VR_hud_left,  grd_curscreen->sc_canvas, x+dx, y, w-dx, h);
+			gr_init_sub_canvas(VR_hud_right, grd_curscreen->sc_canvas, x+w, y, w-dx, h);
+			break;
+		case STEREO_SIDE_BY_SIDE2:
+			gr_init_sub_canvas(VR_hud_left,  grd_curscreen->sc_canvas, x+dx, y+h/2, w-dx, h);
+			gr_init_sub_canvas(VR_hud_right, grd_curscreen->sc_canvas, x+w, y+h/2, w-dx, h);
+			break;
+		}
+	}
 }
 
 }
@@ -1592,6 +1681,7 @@ game_window *game_setup()
 
 	auto game_wind = window_create<game_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
 	reset_palette_add();
+	init_stereo();
 	init_cockpit();
 	init_gauges();
 	netplayerinfo_on = 0;

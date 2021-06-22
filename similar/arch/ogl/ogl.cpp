@@ -56,13 +56,11 @@
 #include "byteutil.h"
 #include "internal.h"
 #include "gauges.h"
-#include "playsave.h"
 #include "object.h"
 #include "args.h"
 
 #include "compiler-range_for.h"
 #include "d_levelstate.h"
-#include "d_range.h"
 #include "d_zip.h"
 #include "partial_range.h"
 
@@ -140,6 +138,9 @@ static int r_polyc,r_tpolyc,r_bitmapc,r_ubitbltc;
 /* I assume this ought to be >= MAX_BITMAP_FILES in piggy.h? */
 static std::array<ogl_texture, 20000> ogl_texture_list;
 static int ogl_texture_list_cur;
+
+static GLboolean 	ogl_stereo_enabled = false;
+static std::array<GLfloat, 16>  	ogl_stereo_transform;
 
 /* some function prototypes */
 
@@ -1285,6 +1286,77 @@ void ogl_start_frame(grs_canvas &canvas)
 #endif
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();//clear matrix
+}
+
+void ogl_stereo_frame(const int xeye, const int xoff)
+{
+	if (!xeye)
+		return;
+	const float dxoff = xoff * 2.0f / grd_curscreen->sc_canvas.cv_bitmap.bm_w;
+	float stereo_transform_dxoff;
+
+	// query if stereo quad buffering available?
+	glGetBooleanv(GL_STEREO, &ogl_stereo_enabled);
+
+	const auto left_eye = xeye < 0;
+	if (left_eye) {
+		// left eye view
+		if (!ogl_stereo_enabled)
+		{
+			std::array<GLint, 4> ogl_stereo_viewport;
+			glGetIntegerv(GL_VIEWPORT, ogl_stereo_viewport.data());
+			// center unsqueezed side-by-side format
+			switch (VR_stereo) {
+			case STEREO_SIDE_BY_SIDE2:
+				ogl_stereo_viewport[1] -= ogl_stereo_viewport[3]/2;		// y = h/4
+				break;
+			case STEREO_ABOVE_BELOW_SYNC:
+				int dy = VR_sync_width/2;
+				ogl_stereo_viewport[3] -= dy;
+				ogl_stereo_viewport[1] += dy;
+				break;
+			}
+			glViewport(ogl_stereo_viewport[0], ogl_stereo_viewport[1], ogl_stereo_viewport[2], ogl_stereo_viewport[3]);
+		}
+		// rightward image shift adjustment for left eye offset
+		stereo_transform_dxoff = -dxoff;		// xoff < 0
+	}
+	else
+	{
+		// right eye view
+		if (!ogl_stereo_enabled)
+		{
+			std::array<GLint, 4> ogl_stereo_viewport;
+			glGetIntegerv(GL_VIEWPORT, ogl_stereo_viewport.data());
+			switch (VR_stereo) {
+			// center unsqueezed side-by-side format
+			case STEREO_SIDE_BY_SIDE2:
+				ogl_stereo_viewport[1] -= ogl_stereo_viewport[3]/2;		// y = h/4
+				DXX_BOOST_FALLTHROUGH;
+			// half-width viewports for side-by-side format
+			case STEREO_SIDE_BY_SIDE:
+				ogl_stereo_viewport[0] += ogl_stereo_viewport[2];		// x = w/2
+				break;
+			// half-height viewports for above/below format
+			case STEREO_ABOVE_BELOW_SYNC:
+			case STEREO_ABOVE_BELOW:
+				ogl_stereo_viewport[1] -= ogl_stereo_viewport[3];		// y = h/2
+				if (VR_stereo == STEREO_ABOVE_BELOW_SYNC)
+					ogl_stereo_viewport[3] -= VR_sync_width/2;
+				break;
+			}
+			glViewport(ogl_stereo_viewport[0], ogl_stereo_viewport[1], ogl_stereo_viewport[2], ogl_stereo_viewport[3]);
+		}
+		// leftward image shift adjustment for right eye offset
+		stereo_transform_dxoff = dxoff;		// xoff < 0
+	}
+	if (ogl_stereo_enabled)
+		glDrawBuffer(left_eye ? GL_BACK_LEFT : GL_BACK_RIGHT);
+	glMatrixMode(GL_PROJECTION);
+	glGetFloatv(GL_PROJECTION_MATRIX, ogl_stereo_transform.data());
+	ogl_stereo_transform[8] += stereo_transform_dxoff;
+	glLoadMatrixf(ogl_stereo_transform.data());
+	glMatrixMode(GL_MODELVIEW);
 }
 
 void ogl_end_frame(void){

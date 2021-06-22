@@ -58,7 +58,6 @@ char copyright[] = "DESCENT II  COPYRIGHT (C) 1994-1996 PARALLAX SOFTWARE CORPOR
 #include "console.h"
 #include "gr.h"
 #include "key.h"
-#include "3d.h"
 #include "bm.h"
 #include "inferno.h"
 #include "dxxerror.h"
@@ -66,7 +65,6 @@ char copyright[] = "DESCENT II  COPYRIGHT (C) 1994-1996 PARALLAX SOFTWARE CORPOR
 #include "game.h"
 #include "u_mem.h"
 #include "screens.h"
-#include "texmap.h"
 #include "texmerge.h"
 #include "menu.h"
 #include "digi.h"
@@ -74,24 +72,22 @@ char copyright[] = "DESCENT II  COPYRIGHT (C) 1994-1996 PARALLAX SOFTWARE CORPOR
 #include "args.h"
 #include "titles.h"
 #include "text.h"
-#include "gauges.h"
 #include "gamefont.h"
 #include "kconfig.h"
 #include "newmenu.h"
 #include "config.h"
 #include "multi.h"
-#include "songs.h"
 #include "gameseq.h"
 #if defined(DXX_BUILD_DESCENT_II)
 #include "gamepal.h"
 #include "movie.h"
 #endif
 #include "playsave.h"
-#include "collide.h"
 #include "newdemo.h"
 #include "joy.h"
 #if !DXX_USE_OGL
 #include "../texmap/scanline.h" //for select_tmap -MM
+#include "texmap.h"
 #endif
 #include "event.h"
 #include "rbaudio.h"
@@ -101,7 +97,6 @@ char copyright[] = "DESCENT II  COPYRIGHT (C) 1994-1996 PARALLAX SOFTWARE CORPOR
 #if DXX_USE_EDITOR
 #include "messagebox.h"
 #include "editor/editor.h"
-#include "editor/kdefs.h"
 #include "ui.h"
 #endif
 #include "vers_id.h"
@@ -134,9 +129,19 @@ static void print_commandline_help()
 
 #define DXX_if_defined_placeholder1	,
 #define DXX_if_defined_unwrap(A,...)	A, ## __VA_ARGS__
+	/* If the parameter V, after macro expansion, evaluates to `1`, then
+	 * expand to the parameter F.  Otherwise, expand to nothing.
+	 */
 #define DXX_if_defined(V,F)	DXX_if_defined2(V,F)
+	/* If the parameter V, after macro expansion, evaluates to anything
+	 * other than `1`, then expand to the parameter F.  Otherwise,
+	 * expand to nothing.
+	 */
+#define DXX_if_not_defined_to_1(V,F)	DXX_if_not_defined_to_1_2(V,F)
 #define DXX_if_defined2(V,F)	DXX_if_defined3(DXX_if_defined_placeholder##V, F)
+#define DXX_if_not_defined_to_1_2(V,F)	DXX_if_not_defined_to_1_3(DXX_if_defined_placeholder##V, F)
 #define DXX_if_defined3(V,F)	DXX_if_defined4(F, V 1, 0)
+#define DXX_if_not_defined_to_1_3(V,F)	DXX_if_defined4(F, V 0, 1)
 #define DXX_if_defined4(F,_,V,...)	DXX_if_defined5_##V(F)
 #define DXX_if_defined5_0(F)
 #define DXX_if_defined5_1(F)	DXX_if_defined_unwrap F
@@ -210,6 +215,14 @@ static void print_commandline_help()
 		VERB("                                    5: Auto: if VSync is enabled and ARB_sync is supported, use mode 2, otherwise mode 0\n")	\
 		VERB("  -gl_syncwait <n>              Wait interval (ms) for sync mode 2 (default: " DXX_STRINGIZE(OGL_SYNC_WAIT_DEFAULT) ")\n")	\
 		VERB("  -gl_darkedges                 Re-enable dark edges around filtered textures (as present in earlier versions of the engine)\n")	\
+		DXX_if_not_defined_to_1(RELEASE, (	\
+		VERB("  -gl_stereo                    Enable OpenGL stereo quad buffering, if available\n")	\
+		VERB("  -gl_stereoview <n>            Select OpenGL stereo viewport mode (experimental; incomplete)\n")	\
+		VERB("                                    1: above/below half-height format\n")	\
+		VERB("                                    2: side/by/side half-width format\n")	\
+		VERB("                                    3: side/by/side half-size format, normal aspect ratio\n") \
+		VERB("                                    4: above/below format with external sync blank interval\n")	\
+		))	\
 	)	\
 	DXX_if_defined_01(DXX_USE_UDP, (	\
 		VERB("\n Multiplayer:\n\n")	\

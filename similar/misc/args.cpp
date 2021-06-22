@@ -22,7 +22,6 @@
 #include "strutil.h"
 #include "digi.h"
 #include "game.h"
-#include "gauges.h"
 #include "console.h"
 #include "mission.h"
 #if DXX_USE_UDP
@@ -154,6 +153,8 @@ static void InitGameArg()
 #if DXX_USE_OGL
 	CGameArg.OglSyncMethod = OGL_SYNC_METHOD_DEFAULT;
 	CGameArg.OglSyncWait = OGL_SYNC_WAIT_DEFAULT;
+	CGameArg.OglStereo = false;
+	CGameArg.OglStereoView = STEREO_NONE;
 	CGameArg.DbgGlIntensity4Ok 	= true;
 	CGameArg.DbgGlLuminance4Alpha4Ok = true;
 	CGameArg.DbgGlRGBA2Ok = true;
@@ -294,6 +295,10 @@ static void ReadCmdArgs(Inilist &ini, Arglist &Args)
 			CGameArg.OglSyncWait = arg_integer(pp, end);
 		else if (!d_stricmp(p, "-gl_darkedges"))
 			CGameArg.OglDarkEdges = true;
+		else if (!d_stricmp(p, "-gl_stereo"))
+			CGameArg.OglStereo = true;
+		else if (!d_stricmp(p, "-gl_stereoview"))
+			CGameArg.OglStereoView = arg_integer(pp, end);
 #endif
 
 	// Multiplayer Options

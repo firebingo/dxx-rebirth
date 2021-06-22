@@ -36,12 +36,9 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "inferno.h"
 #include "window.h"
 #include "mission.h"
-#include "gameseq.h"
 #include "gamesave.h"
-#include "titles.h"
 #include "piggy.h"
 #include "console.h"
-#include "songs.h"
 #include "polyobj.h"
 #include "dxxerror.h"
 #include "config.h"
@@ -51,7 +48,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "ignorecase.h"
 #include "physfsx.h"
 #include "physfs_list.h"
-#include "bm.h"
 #include "event.h"
 #if defined(DXX_BUILD_DESCENT_II)
 #include "movie.h"
@@ -1400,7 +1396,7 @@ window_event_result mission_menu::callback_handler(const d_event &event, window_
 						return m.mission_name;
 					};
 					std::transform(mli.directory.begin(), mli.directory.end(), &listbox_strings[1], a);
-					auto submm = window_create<subdirectory_mission_menu>(ml, std::move(listbox_strings), mli.path.c_str(), when_selected, this, 0, grd_curscreen->sc_canvas);
+					auto submm = window_create<subdirectory_mission_menu>(mli.directory, std::move(listbox_strings), mli.path.c_str(), when_selected, this, 0, grd_curscreen->sc_canvas);
 					(void)submm;
 					return window_event_result::handled;
 				}

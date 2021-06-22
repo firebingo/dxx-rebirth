@@ -147,7 +147,7 @@ class Git(StaticSubprocess):
 	else:
 		# Otherwise, assume that this is a checked-in copy.
 		__git_archive_export_commit = None
-	class ComputedExtraVersion(object):
+	class ComputedExtraVersion:
 		__slots__ = ('describe', 'status', 'diffstat_HEAD', 'revparse_HEAD')
 		def __init__(self,describe,status,diffstat_HEAD,revparse_HEAD):
 			self.describe = describe
@@ -219,12 +219,21 @@ class Git(StaticSubprocess):
 		).decode()
 
 class _ConfigureTests:
-	class Collector(object):
-		class RecordedTest(object):
+	class Collector:
+		class RecordedTest:
 			__slots__ = ('desc', 'name', 'predicate')
-			def __init__(self,name,desc,predicate=None):
+			def __init__(self,name,desc,predicate=()):
 				self.name = name
 				self.desc = desc
+				# predicate is a sequence of zero-or-more functions that
+				# take a UserSettings object as the only argument.
+				# A recorded test is only passed to the SConf logic if
+				# at most zero predicates return a false-like value.
+				#
+				# Callers use this to exclude from execution tests which
+				# make no sense in the current environment, such as a
+				# Windows-specific test when building for a
+				# Linux target.
 				self.predicate = predicate
 			def __repr__(self):
 				return '_ConfigureTests.Collector.RecordedTest(%r, %r, %r)' % (self.name, self.desc, self.predicate)
@@ -244,18 +253,30 @@ class _ConfigureTests:
 class ConfigureTests(_ConfigureTests):
 	class Collector(_ConfigureTests.Collector):
 		def __init__(self):
+			# An unguarded collector maintains a list of tests, and adds
+			# to the list as the decorator is called on individual
+			# functions.
 			self.tests = tests = []
-			_ConfigureTests.Collector.__init__(self, tests.append)
+			super().__init__(tests.append)
 
 	class GuardedCollector(_ConfigureTests.Collector):
-		__RecordedTest = _ConfigureTests.Collector.RecordedTest
 		def __init__(self,collector,guard):
-			_ConfigureTests.Collector.__init__(self, collector.record)
-			self.__guard = guard
-		def RecordedTest(self,name,desc):
-			return self.__RecordedTest(name, desc, self.__guard)
+			# A guarded collector delegates to the list maintained by
+			# the input collector, instead of keeping a list of its own.
+			super().__init__(collector.record)
+			# `guard` is a single function, but the predicate handling
+			# expects a sequence of functions, so store a single-element
+			# tuple.
+			self.__guard = guard,
+			self.__RecordedTest = collector.RecordedTest
+		def RecordedTest(self, name, desc, predicate=()):
+			# Record a test with both the guard of this GuardedCollector
+			# and any guards from the input collector objects, which may
+			# in turn be instances of GuardedCollector with predicates
+			# of their own.
+			return self.__RecordedTest(name, desc, self.__guard + predicate)
 
-	class CxxRequiredFeature(object):
+	class CxxRequiredFeature:
 		__slots__ = ('main', 'name', 'text')
 		def __init__(self,name,text,main=''):
 			self.name = name
@@ -268,7 +289,7 @@ class ConfigureTests(_ConfigureTests):
 		std = 14
 	class Cxx17RequiredFeature(CxxRequiredFeature):
 		std = 17
-	class CxxRequiredFeatures(object):
+	class CxxRequiredFeatures:
 		__slots__ = ('features', 'main', 'text')
 		def __init__(self,features):
 			self.features = features
@@ -414,6 +435,7 @@ class ConfigureTests(_ConfigureTests):
 	_implicit_test = Collector()
 	_custom_test = Collector()
 	_guarded_test_windows = GuardedCollector(_custom_test, lambda user_settings: user_settings.host_platform == 'win32')
+	_guarded_test_darwin = GuardedCollector(_custom_test, lambda user_settings: user_settings.host_platform == 'darwin')
 	implicit_tests = _implicit_test.tests
 	custom_tests = _custom_test.tests
 	comment_not_supported = '/* not supported */'
@@ -603,7 +625,7 @@ struct %(N)s {
 		# When LTO is used, the optimizer is deferred to link time.
 		# Force all tests to be Link tests when LTO is enabled.
 		self.Compile = self.Link if user_settings.lto else self._Compile
-		self.custom_tests = [t for t in self.custom_tests if t.predicate is None or t.predicate(user_settings)]
+		self.custom_tests = [t for t in self.custom_tests if all(predicate(user_settings) for predicate in t.predicate)]
 	def _quote_macro_value(v):
 		return v.strip().replace('\n', ' \\\n')
 	def _check_sconf_forced(self,calling_function):
@@ -1323,6 +1345,7 @@ struct d_screenshot
 '''):
 		successflags = self.pkgconfig.merge(context, self.msgprefix, self.user_settings, 'jsoncpp', 'jsoncpp', _guess_flags)
 		self._check_system_library(context, header=_header, main=_main, lib='jsoncpp', successflags=successflags)
+
 	@_guarded_test_windows
 	def check_dbghelp_header(self,context,_CPPDEFINES='DXX_ENABLE_WINDOWS_MINIDUMP'):
 		windows_minidump = self.user_settings.windows_minidump
@@ -2306,6 +2329,7 @@ I a()
 		return _macro_value \
 			if self.Compile(context, text=text.format(leading_text=blacklist_clang_libcxx, macro_value=_macro_value), msg='for C++11 inherited constructors with good unique_ptr<T[]> support', **kwargs) \
 			else None
+
 	@_implicit_test
 	def check_cxx11_variadic_forward_constructor(self,context,text,_macro_value=_quote_macro_value('''
     template <typename... Args>
@@ -2318,6 +2342,7 @@ help:assume compiler supports variadic template-based constructor forwarding
 		return _macro_value \
 			if self.Compile(context, text=text.format(leading_text='#include <algorithm>\n', macro_value=_macro_value), msg='for C++11 variadic templates on constructors', **kwargs) \
 			else None
+
 	@_custom_test
 	def _check_forward_constructor(self,context,_text='''
 {leading_text}
@@ -2365,6 +2390,7 @@ static void a(){{
 			if Compile(context, text=text.format(type=','.join(('int',)*count), value=','.join(('0',)*count)), main='a()', msg='whether compiler handles 2-element tuples') \
 			else "Compiler cannot handle tuples of 2 elements."
 		)
+
 	@_implicit_test
 	def check_poison_valgrind(self,context):
 		'''
@@ -2412,6 +2438,7 @@ help:always wipe certain freed memory
 	implicit_tests.append(_implicit_test.RecordedTest('check_size_type_long', "assume size_t is formatted as `unsigned long`"))
 	implicit_tests.append(_implicit_test.RecordedTest('check_size_type_int', "assume size_t is formatted as `unsigned int`"))
 	implicit_tests.append(_implicit_test.RecordedTest('check_size_type_I64', "assume size_t is formatted as `unsigned I64`"))
+
 	@_custom_test
 	def _check_size_type_format_modifier(self,context,_text='''
 #include <cstddef>
@@ -2623,6 +2650,7 @@ where the cast is useless.
 	freeaddrinfo(res);
 	return 0;
 ''', msg='for getaddrinfo', successflags=_successflags)
+
 	@_guarded_test_windows
 	def check_inet_ntop_present(self,context,_successflags={'CPPDEFINES' : ['DXX_HAVE_INET_NTOP']}):
 		# Linux and OS X have working inet_ntop on all supported
@@ -2639,6 +2667,7 @@ where the cast is useless.
 			return
 		if self.user_settings.ipv6:
 			raise SCons.Errors.StopError("IPv6 enabled and inet_ntop not available: disable IPv6 or upgrade headers to support inet_ntop.")
+
 	@_custom_test
 	def check_timespec_present(self,context,_successflags={'CPPDEFINES' : ['DXX_HAVE_STRUCT_TIMESPEC']}):
 		self.Compile(context, text='''
@@ -2888,6 +2917,39 @@ BOOST_AUTO_TEST_CASE(f)
 		if register_runtime_test_link_targets:
 			self.check_boost_test(context)
 
+	# dylibbundler is used to embed libraries into macOS app bundles,
+	# however it's only meaningful for macOS builds, and, for those,
+	# only required when frameworks are not used for the build.  Builds
+	# should not fail on other operating system targets if it's absent.
+	@GuardedCollector(_guarded_test_darwin, lambda user_settings: not user_settings.macos_add_frameworks)
+	def _check_dylibbundler(self, context, _common_error_text='; dylibbundler is required for compilation for a macOS target when not using frameworks.  Set macos_add_frameworks=True or install dylibbundler.'):
+		context.Display('%s: checking whether dylibbundler is installed and accepts -h...' % self.msgprefix)
+		try:
+			p = StaticSubprocess.pcall(('dylibbundler', '-h'), stderr=subprocess.PIPE)
+		except FileNotFoundError as e:
+			context.Result('no; %s' % (e,))
+			raise SCons.Errors.StopError('dylibbundler not found%s' % (_common_error_text,))
+		expected = b'dylibbundler is a utility'
+		first_output_line = p.out.splitlines()
+		if first_output_line:
+			first_output_line = first_output_line[0]
+		# This test allows the expected text to appear anywhere in the
+		# output.  Only the first line of output will be shown to SCons'
+		# stdout.  The full output will be written to the SConf log.
+		if p.returncode:
+			reason = 'successful exit, but return code was %d' % p.returncode
+		elif expected not in p.out:
+			reason = 'output to contain %r, but first line of output was: %r' % (expected.decode(), first_output_line)
+		else:
+			context.Result('yes; %s' % (first_output_line,))
+			return
+		context.Result('no; expected %s' % reason)
+		context.Log('''scons: dylibbundler return code: %r
+scons: dylibbundler stdout: %r
+scons: dylibbundler stderr: %r
+'''  % (p.returncode, p.out, p.err))
+		raise SCons.Errors.StopError('`dylibbundler -h` failed to return expected output; dylibbundler is required for compilation for a macOS target when not using frameworks.  Set macos_add_frameworks=False (and handle the libraries manually) or install dylibbundler.')
+
 	# This must be the last custom test.  It does not test the environment,
 	# but is responsible for reversing test-environment-specific changes made
 	# by check_cxx_works.
@@ -2900,7 +2962,7 @@ BOOST_AUTO_TEST_CASE(f)
 
 ConfigureTests.register_preferred_compiler_options()
 
-class cached_property(object):
+class cached_property:
 	__slots__ = 'method',
 	def __init__(self,f):
 		self.method = f
@@ -2924,7 +2986,7 @@ class cached_property(object):
 		d[name] = r = method(instance)
 		return r
 
-class LazyObjectConstructor(object):
+class LazyObjectConstructor:
 	class LazyObjectState:
 		def __init__(self,sources,transform_env=None,StaticObject_hook=None,transform_target=None):
 			# `sources` must be non-empty, since it would have no use if
@@ -3013,7 +3075,7 @@ class FilterHelpText:
 			l.append("current: {current}".format(current=actual))
 		return (" {opt:%u}  {help}{l}\n" % (self._sconf_align if opt[:6] == 'sconf_' else 15)).format(opt=opt, help=help, l=(" [" + "; ".join(l) + "]" if l else ''))
 
-class PCHManager(object):
+class PCHManager:
 	class ScannedFile:
 		def __init__(self,candidates):
 			self.candidates = candidates
@@ -3572,7 +3634,7 @@ class DXXCommon(LazyObjectConstructor):
 
 	# Settings which affect how the files are compiled
 	class UserBuildSettings:
-		class IntVariable(object):
+		class IntVariable:
 			def __new__(cls,key,help,default):
 				return (key, help, default, cls._validator, int)
 			@staticmethod
@@ -3759,7 +3821,7 @@ class DXXCommon(LazyObjectConstructor):
 						'cross-compile to specified platform',
 						{
 							'map': {'msys':'win32'},
-							'allowed_values' : ('darwin', 'linux', 'freebsd', 'openbsd', 'win32'),
+							'allowed_values' : ('darwin', 'linux', 'freebsd', 'openbsd', 'win32', 'haiku1'),
 							}
 						),
 					('raspberrypi', None, 'build for Raspberry Pi (automatically selects opengles)', {'ignorecase': 2, 'map': {'1':'yes', 'true':'yes', '0':'no', 'false':'no'}, 'allowed_values': ('yes', 'no', 'mesa')}),
@@ -4690,7 +4752,7 @@ class DXXArchive(DXXCommon):
 
 	def __init__(self,user_settings):
 		user_settings = user_settings.clone()
-		DXXCommon.__init__(self, user_settings)
+		super().__init__(user_settings)
 		if not user_settings.register_compile_target:
 			return
 		self.prepare_environment()
@@ -4966,10 +5028,8 @@ class DXXProgram(DXXCommon):
 			return '%s/bin' % self.prefix
 	# Settings to apply to mingw32 builds
 	class Win32PlatformSettings(DXXCommon.Win32PlatformSettings):
-		def __init__(self,program,user_settings):
-			DXXCommon.Win32PlatformSettings.__init__(self,program,user_settings)
 		def adjust_environment(self,program,env):
-			DXXCommon.Win32PlatformSettings.adjust_environment(self, program, env)
+			super().adjust_environment(program, env)
 			rcdir = 'similar/arch/win32'
 			j = os.path.join
 			resfile = env.RES(target=j(program.user_settings.builddir, rcdir, '%s.res%s' % (program.target, env["OBJSUFFIX"])), source=j(rcdir, 'dxx-rebirth.rc'))
@@ -4987,10 +5047,8 @@ class DXXProgram(DXXCommon):
 			)
 	# Settings to apply to Apple builds
 	class DarwinPlatformSettings(DXXCommon.DarwinPlatformSettings):
-		def __init__(self,program,user_settings):
-			DXXCommon.DarwinPlatformSettings.__init__(self,program,user_settings)
 		def adjust_environment(self,program,env):
-			DXXCommon.DarwinPlatformSettings.adjust_environment(self, program, env)
+			super().adjust_environment(program, env)
 			VERSION = '%s.%s' % (program.VERSION_MAJOR, program.VERSION_MINOR)
 			if (program.VERSION_MICRO):
 				VERSION += '.%s' % program.VERSION_MICRO
@@ -5001,11 +5059,11 @@ class DXXProgram(DXXCommon):
 	# Settings to apply to Linux builds
 	class LinuxPlatformSettings(DXXCommon.LinuxPlatformSettings):
 		def __init__(self,program,user_settings):
-			DXXCommon.LinuxPlatformSettings.__init__(self,program,user_settings)
+			super().__init__(program, user_settings)
 			if user_settings.sharepath and user_settings.sharepath[-1] != '/':
 				user_settings.sharepath += '/'
 		def adjust_environment(self,program,env):
-			DXXCommon.LinuxPlatformSettings.adjust_environment(self,program,env)
+			super().adjust_environment(program, env)
 			user_settings = self.user_settings
 			if user_settings.need_dynamic_library_load():
 				env.Append(LIBS = ['dl'])
@@ -5031,7 +5089,7 @@ class DXXProgram(DXXCommon):
 		self.variables = variables
 		self._argument_prefix_list = prefix
 		user_settings = self.UserSettings(program=self)
-		DXXCommon.__init__(self, user_settings)
+		super().__init__(user_settings)
 		compute_extra_version = Git.compute_extra_version()
 		git_describe_version = compute_extra_version.describe
 		extra_version = 'v%s.%s.%s' % (self.VERSION_MAJOR, self.VERSION_MINOR, self.VERSION_MICRO)
@@ -5055,7 +5113,7 @@ class DXXProgram(DXXCommon):
 		return self.variables.GenerateHelpText(self.env)
 
 	def prepare_environment(self,archive):
-		DXXCommon.prepare_environment(self)
+		super().prepare_environment()
 		env = self.env
 		env.MergeFlags(archive.configure_added_environment_flags)
 		self.create_special_target_nodes(archive)
@@ -5254,6 +5312,10 @@ class DXXProgram(DXXCommon):
 					typecode='APPL', creator='DCNT',
 					icon_file=os.path.join(cocoa, '%s-rebirth.icns' % dxxstr),
 					resources=[[os.path.join(self.srcdir, s), s] for s in ['English.lproj/InfoPlist.strings']])
+			if not self.user_settings.macos_add_frameworks:
+				Command('%s.app/Contents/libs' % self.PROGRAM_NAME,
+						'%s.app/Contents/MacOS/%s-rebirth' % (self.PROGRAM_NAME, dxxstr),
+						"dylibbundler -od -b -x $SOURCE -d $TARGET")
 
 class D1XProgram(DXXProgram):
 	LazyObjectState = DXXProgram.LazyObjectState

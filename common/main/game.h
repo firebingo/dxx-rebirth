@@ -36,7 +36,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "fwd-segment.h"
 #include "window.h"
 #include "d_array.h"
-#include "gauges.h"
 #include "kconfig.h"
 #include "wall.h"
 
@@ -58,6 +57,7 @@ extern fix FrameTime;           // time in seconds since last frame
 extern fix64 GameTime64;            // time in game (sum of FrameTime)
 extern int d_tick_count; // increments according to DESIGNATED_GAME_FRAMETIME
 extern int d_tick_step;  // true once in interval of DESIGNATED_GAME_FRAMETIME
+enum class gauge_inset_window_view : unsigned;
 }
 
 #if defined(DXX_BUILD_DESCENT_II)
@@ -189,6 +189,23 @@ struct d_game_unique_state
 extern int Global_missile_firing_count;
 
 extern int PaletteRedAdd, PaletteGreenAdd, PaletteBlueAdd;
+
+// Stereo viewport formats
+enum StereoFormat : uint8_t {
+	STEREO_NONE=0,
+	STEREO_ABOVE_BELOW,
+	STEREO_SIDE_BY_SIDE,
+	STEREO_SIDE_BY_SIDE2,
+	STEREO_ABOVE_BELOW_SYNC,
+	STEREO_MAX_FORMAT
+};
+
+extern int  VR_stereo;
+extern fix  VR_eye_width;
+extern int  VR_eye_offset;
+extern int  VR_sync_width;
+extern grs_canvas VR_hud_left;
+extern grs_canvas VR_hud_right;
 }
 
 #define MAX_PALETTE_ADD 30
@@ -205,6 +222,7 @@ extern game_window *Game_wind;
 
 void game();
 void init_game();
+void init_stereo();
 void init_cockpit();
 extern void PALETTE_FLASH_ADD(int dr, int dg, int db);
 

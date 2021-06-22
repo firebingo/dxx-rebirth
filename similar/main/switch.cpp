@@ -29,7 +29,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <math.h>
 #include <string.h>
 
-#include "gauges.h"
 #include "newmenu.h"
 #include "game.h"
 #include "switch.h"
@@ -38,10 +37,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "dxxerror.h"
 #include "gameseg.h"
 #include "wall.h"
-#include "texmap.h"
 #include "object.h"
 #include "fuelcen.h"
-#include "cntrlcen.h"
 #include "newdemo.h"
 #include "player.h"
 #include "endlevel.h"
@@ -51,10 +48,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "hudmsg.h"
 #include "robot.h"
 #include "bm.h"
-
-#if DXX_USE_EDITOR
-#include "editor/editor.h"
-#endif
 
 #include "physfs-serial.h"
 #include "d_levelstate.h"
@@ -139,6 +132,8 @@ static void do_unlock_doors(fvcsegptr &vcsegptr, fvmwallptr &vmwallptr, const tr
 {
 	const auto op = [&vmwallptr](const shared_segment &segp, const unsigned sidenum) {
 		const auto wall_num = segp.sides[sidenum].wall_num;
+		if (wall_num == wall_none)
+			return;
 		auto &w = *vmwallptr(wall_num);
 		w.flags &= ~WALL_DOOR_LOCKED;
 		w.keys = wall_key::none;
@@ -151,6 +146,8 @@ static void do_lock_doors(fvcsegptr &vcsegptr, fvmwallptr &vmwallptr, const trig
 {
 	const auto op = [&vmwallptr](const shared_segment &segp, const unsigned sidenum) {
 		const auto wall_num = segp.sides[sidenum].wall_num;
+		if (wall_num == wall_none)
+			return;
 		auto &w = *vmwallptr(wall_num);
 		w.flags |= WALL_DOOR_LOCKED;
 	};
